@@ -29,12 +29,8 @@ typedef LONG NTSTATUS;
 #pragma comment(lib, "comctl32.lib")
 #endif
 
-/* MSVC的swprintf不带size参数 */
-#ifdef _MSC_VER
-#define SWPRINTF(buf, bufsz, fmt, ...) swprintf(buf, fmt, __VA_ARGS__)
-#else
+/* swprintf统一使用C99签名 (buf, size, fmt, ...) - MSVC 2015+和MinGW均支持 */
 #define SWPRINTF(buf, bufsz, fmt, ...) swprintf(buf, bufsz, fmt, __VA_ARGS__)
-#endif
 
 /* ===== 下载链接 ===== */
 #define URL_SHA2_CATALOG  L"https://catalog.update.microsoft.com/v7/site/Search.aspx?q=KB4474419"
