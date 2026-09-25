@@ -1,0 +1,2 @@
+# check_webview2_sh2
+检查win7的sh2补丁和win10以上webview2是否安装
