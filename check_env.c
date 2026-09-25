@@ -238,71 +238,6 @@ static void OpenURL(LPCWSTR url) {
     ShellExecuteW(NULL, L"open", url, NULL, NULL, SW_SHOWNORMAL);
 }
 
-/* 构建纯文本结果用于剪贴板 */
-static void AppendText(wchar_t *buf, int *pos, int cap, const wchar_t *text) {
-    int len = (int)wcslen(text);
-    if (*pos + len >= cap) len = cap - *pos;
-    if (len > 0) {
-        memcpy(buf + *pos, text, len * sizeof(wchar_t));
-        *pos += len;
-    }
-    buf[*pos] = L'\0';
-}
-
-static void BuildResultText(const CheckResult *r) {
-    const wchar_t *ed = L"Windows";
-    if (r->win_ver_major == 6 && r->win_ver_minor == 1) ed = L"Windows 7";
-    else if (r->win_ver_major == 6 && r->win_ver_minor == 3) ed = L"Windows 8.1";
-    else if (r->win_ver_major == 10 && r->win_build >= 22000) ed = L"Windows 11";
-    else if (r->win_ver_major == 10) ed = L"Windows 10";
-
-    int n = 0;
-    int cap = (int)(sizeof(g_resultText) / sizeof(wchar_t)) - 1;
-    wchar_t tmp[512];
-
-    /* 操作系统 + 架构合并为一行 */
-    SWPRINTF(tmp, 512, L"\x64CD\x4F5C\x7CFB\x7EDF: %s (Build %lu) %s\r\n", ed, r->win_build, r->arch);
-    AppendText(g_resultText, &n, cap, tmp);
-
-    if (r->win_ver_major < 10) {
-        if (r->sha2_ok)
-            AppendText(g_resultText, &n, cap, L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01: \x5DF2\x5B89\x88C5 \x2713\r\n");
-        else
-            AppendText(g_resultText, &n, cap, L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01: \x672A\x5B89\x88C5 \x2717\r\n");
-    }
-
-    /* Win10+才显示WebView2 */
-    if (r->win_ver_major >= 10) {
-        if (r->wv2_ok && r->wv2_version[0]) {
-            SWPRINTF(tmp, 512, L"WebView2\x8FD0\x884C\x65F6: \x5DF2\x5B89\x88C5 (\x7248\x672C %s) \x2713\r\n", r->wv2_version);
-            AppendText(g_resultText, &n, cap, tmp);
-        } else if (r->wv2_ok) {
-            AppendText(g_resultText, &n, cap, L"WebView2\x8FD0\x884C\x65F6: \x5DF2\x5B89\x88C5 \x2713\r\n");
-        } else {
-            AppendText(g_resultText, &n, cap, L"WebView2\x8FD0\x884C\x65F6: \x672A\x5B89\x88C5 \x2717\r\n");
-        }
-    }
-}
-
-/* 复制到剪贴板 */
-static void CopyToClipboard(HWND hwnd) {
-    if (!g_resultText[0]) return;
-    size_t len = wcslen(g_resultText);
-    HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, (len + 1) * sizeof(wchar_t));
-    if (!hMem) return;
-    wchar_t *p = (wchar_t*)GlobalLock(hMem);
-    if (!p) { GlobalFree(hMem); return; }
-    wcscpy(p, g_resultText);
-    GlobalUnlock(hMem);
-    if (OpenClipboard(hwnd)) {
-        EmptyClipboard();
-        SetClipboardData(CF_UNICODETEXT, hMem);
-        CloseClipboard();
-    } else {
-        GlobalFree(hMem);
-    }
-}
-
 /* 窗口过程 */
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -311,14 +246,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         CREATESTRUCTW *cs = (CREATESTRUCTW*)lParam;
         CheckResult *result = (CheckResult*)cs->lpCreateParams;
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)result);
-        BuildResultText(result);
 
         HDC hdc = GetDC(hwnd);
         int dpi = GetDeviceCaps(hdc, LOGPIXELSY);
         ReleaseDC(hwnd, hdc);
         int scale = MulDiv(100, dpi, 96);
 
-        /* 字体 - 微软雅黑，加大字号 */
+        /* 字体 - 微软雅黑 */
         HFONT hFont = CreateFontW(
             -MulDiv(11, dpi, 72), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -331,10 +265,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         /* DPI感知布局 */
         int margin     = MulDiv(28, scale, 100);
         int xText      = margin;
-        int lineH      = MulDiv(38, scale, 100);   /* 行高 > 控件高度 */
-        int ctrlH      = MulDiv(30, scale, 100);   /* 文本控件高度 */
-        int linkH      = MulDiv(34, scale, 100);   /* SysLink控件高度(含链接行) */
-        int ctrlW      = MulDiv(700, scale, 100);  /* 控件宽度 */
+        int lineH      = MulDiv(38, scale, 100);
+        int ctrlH      = MulDiv(30, scale, 100);   /* EDIT控件高度 */
+        int linkH      = MulDiv(34, scale, 100);   /* SysLink控件高度 */
+        int ctrlW      = MulDiv(700, scale, 100);
         int titleH     = MulDiv(38, scale, 100);
         int btnW       = MulDiv(130, scale, 100);
         int btnH       = MulDiv(38, scale, 100);
@@ -343,7 +277,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         int linkId     = ID_LINK_BASE;
         int y = MulDiv(20, scale, 100);
 
-        /* 标题 */
+        /* 标题 (STATIC - 不需复制) */
         HWND hTitle = CreateWindowW(L"STATIC",
             L"\x7CFB\x7EDF\x73AF\x5883\x68C0\x67E5\x7ED3\x679C",
             WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
@@ -357,7 +291,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             xText, y, ctrlW, 2, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
         y += MulDiv(12, scale, 100);
 
-        /* 操作系统 + 架构 (合并为一行) */
+        /* 操作系统 + 架构: "操作系统:  Windows 10 x64 (Build 19045)" */
         const wchar_t *edition = L"Windows";
         if (result->win_ver_major == 6 && result->win_ver_minor == 1)
             edition = L"Windows 7";
@@ -370,24 +304,26 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
         wchar_t osText[512];
         SWPRINTF(osText, 512,
-            L"\x64CD\x4F5C\x7CFB\x7EDF:  %s (Build %lu)  %s", edition, result->win_build, result->arch);
-        HWND hOS = CreateWindowW(L"STATIC", osText,
-            WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
+            L"\x64CD\x4F5C\x7CFB\x7EDF:  %s %s (Build %lu)", edition, result->arch, result->win_build);
+        /* 只读EDIT - 文字可选中复制 */
+        HWND hOS = CreateWindowW(L"EDIT", osText,
+            WS_CHILD | WS_VISIBLE | ES_READONLY | ES_LEFT | ES_AUTOHSCROLL,
             xText, y, ctrlW, ctrlH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
         SendMessageW(hOS, WM_SETFONT, (WPARAM)hFont, TRUE);
         y += lineH + sectionGap;
 
-        /* SHA2补丁 (仅Win7) - 已安装用STATIC，未安装用SysLink(状态+链接同行) */
+        /* SHA2补丁 (仅Win7) */
         if (result->win_ver_major < 10) {
             if (result->sha2_ok) {
-                HWND hSha2 = CreateWindowW(L"STATIC",
+                /* 已安装: 只读EDIT */
+                HWND hSha2 = CreateWindowW(L"EDIT",
                     L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01:  \x5DF2\x5B89\x88C5  \x2713",
-                    WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
+                    WS_CHILD | WS_VISIBLE | ES_READONLY | ES_LEFT | ES_AUTOHSCROLL,
                     xText, y, ctrlW, ctrlH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
                 SendMessageW(hSha2, WM_SETFONT, (WPARAM)hFont, TRUE);
                 y += lineH;
             } else {
-                /* 未安装: 状态文字+下载链接放在同一个SysLink控件 */
+                /* 未安装: SysLink(状态+链接同行，文字可选中) */
                 wchar_t linkText[800];
                 if (g_is64bit) {
                     SWPRINTF(linkText, 800,
@@ -410,30 +346,29 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 y += linkH;
             }
             y += sectionGap;
-            /* Win7不显示WebView2 */
         }
 
-        /* WebView2 (仅Win10+) - 已安装用STATIC，未安装用SysLink(状态+链接同行) */
+        /* WebView2 (仅Win10+) */
         if (result->win_ver_major >= 10) {
             if (result->wv2_ok && result->wv2_version[0]) {
                 wchar_t wv2Text[512];
                 SWPRINTF(wv2Text, 512,
                     L"WebView2\x8FD0\x884C\x65F6:  \x5DF2\x5B89\x88C5  (\x7248\x672C %s)  \x2713",
                     result->wv2_version);
-                HWND hWV2 = CreateWindowW(L"STATIC", wv2Text,
-                    WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
+                HWND hWV2 = CreateWindowW(L"EDIT", wv2Text,
+                    WS_CHILD | WS_VISIBLE | ES_READONLY | ES_LEFT | ES_AUTOHSCROLL,
                     xText, y, ctrlW, ctrlH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
                 SendMessageW(hWV2, WM_SETFONT, (WPARAM)hFont, TRUE);
                 y += lineH;
             } else if (result->wv2_ok) {
-                HWND hWV2 = CreateWindowW(L"STATIC",
+                HWND hWV2 = CreateWindowW(L"EDIT",
                     L"WebView2\x8FD0\x884C\x65F6:  \x5DF2\x5B89\x88C5  \x2713",
-                    WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
+                    WS_CHILD | WS_VISIBLE | ES_READONLY | ES_LEFT | ES_AUTOHSCROLL,
                     xText, y, ctrlW, ctrlH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
                 SendMessageW(hWV2, WM_SETFONT, (WPARAM)hFont, TRUE);
                 y += lineH;
             } else {
-                /* 未安装: 状态文字+下载链接放在同一个SysLink控件 */
+                /* 未安装: SysLink(状态+链接同行) */
                 wchar_t linkText[800];
                 SWPRINTF(linkText, 800,
                     L"WebView2\x8FD0\x884C\x65F6:  \x672A\x5B89\x88C5  \x2717    "
@@ -451,22 +386,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
         y += sectionGap + MulDiv(8, scale, 100);
 
-        /* 按钮: 复制结果 + 关闭 */
-        int btnGap = MulDiv(16, scale, 100);
+        /* 关闭按钮 (居中) */
         int clientW = MulDiv(760, scale, 100);
-        int totalBtnW = btnW * 2 + btnGap;
-        int btnStartX = (clientW - totalBtnW) / 2;
-
-        HWND hCopyBtn = CreateWindowW(L"BUTTON",
-            L"\x590D\x5236\x7ED3\x679C",
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-            btnStartX, y, btnW, btnH, hwnd, (HMENU)IDC_COPY_BTN, cs->hInstance, NULL);
-        SendMessageW(hCopyBtn, WM_SETFONT, (WPARAM)hFont, TRUE);
+        int btnStartX = (clientW - btnW) / 2;
 
         HWND hCloseBtn = CreateWindowW(L"BUTTON",
             L"\x5173\x95ED",
             WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-            btnStartX + btnW + btnGap, y, btnW, btnH, hwnd, (HMENU)IDC_CLOSE_BTN, cs->hInstance, NULL);
+            btnStartX, y, btnW, btnH, hwnd, (HMENU)IDC_CLOSE_BTN, cs->hInstance, NULL);
         SendMessageW(hCloseBtn, WM_SETFONT, (WPARAM)hFont, TRUE);
         y += btnH + MulDiv(16, scale, 100);
 
@@ -486,6 +413,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         break;
     }
 
+    case WM_CTLCOLORSTATIC: {
+        /* 让只读EDIT和STATIC背景与窗口一致 */
+        HDC hdcCtrl = (HDC)wParam;
+        SetBkMode(hdcCtrl, TRANSPARENT);
+        SetTextColor(hdcCtrl, GetSysColor(COLOR_WINDOWTEXT));
+        return (INT_PTR)GetSysColorBrush(COLOR_WINDOW);
+    }
+
     case WM_NOTIFY: {
         NMHDR *nmhdr = (NMHDR*)lParam;
         if (nmhdr->code == NM_CLICK || nmhdr->code == NM_RETURN) {
@@ -499,12 +434,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     case WM_COMMAND:
         if (LOWORD(wParam) == IDC_CLOSE_BTN) {
             DestroyWindow(hwnd);
-        } else if (LOWORD(wParam) == IDC_COPY_BTN) {
-            CopyToClipboard(hwnd);
-            MessageBoxW(hwnd,
-                L"\x68C0\x67E5\x7ED3\x679C\x5DF2\x590D\x5236\x5230\x526A\x8D34\x677F",
-                L"\x63D0\x793A",
-                MB_OK | MB_ICONINFORMATION);
         }
         break;
 
