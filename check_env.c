@@ -254,24 +254,24 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
         /* 字体 - 微软雅黑 */
         HFONT hFont = CreateFontW(
-            -MulDiv(11, dpi, 72), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+            -MulDiv(12, dpi, 72), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
             CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei");
         HFONT hFontBold = CreateFontW(
-            -MulDiv(12, dpi, 72), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+            -MulDiv(13, dpi, 72), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
             CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei");
 
         /* DPI感知布局 */
         int margin     = MulDiv(28, scale, 100);
         int xText      = margin;
-        int lineH      = MulDiv(38, scale, 100);
-        int ctrlH      = MulDiv(30, scale, 100);   /* EDIT控件高度 */
-        int linkH      = MulDiv(34, scale, 100);   /* SysLink控件高度 */
+        int lineH      = MulDiv(42, scale, 100);
+        int ctrlH      = MulDiv(34, scale, 100);   /* EDIT控件高度 */
+        int linkH      = MulDiv(38, scale, 100);   /* SysLink控件高度 */
         int ctrlW      = MulDiv(700, scale, 100);
-        int titleH     = MulDiv(38, scale, 100);
+        int titleH     = MulDiv(42, scale, 100);
         int btnW       = MulDiv(130, scale, 100);
-        int btnH       = MulDiv(38, scale, 100);
+        int btnH       = MulDiv(40, scale, 100);
         int sectionGap = MulDiv(10, scale, 100);
         int staticId   = ID_STATIC_BASE;
         int linkId     = ID_LINK_BASE;
