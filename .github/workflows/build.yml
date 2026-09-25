@@ -6,14 +6,33 @@ on:
     tags: [ 'v*' ]
   pull_request:
     branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. v1.0)'
+        required: true
 
 jobs:
   build:
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+
+      - name: Get version
+        id: get_version
+        shell: bash
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          elif [[ -n "${{ github.event.inputs.version }}" ]]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=dev-$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          fi
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1.13.0
@@ -24,22 +43,21 @@ jobs:
           rc resource.rc
           cl check_env.c resource.res /MT /O2 /Fe:check_env.exe advapi32.lib version.lib shell32.lib comctl32.lib user32.lib gdi32.lib
 
-      - name: Verify exe
-        shell: cmd
-        run: |
-          dumpbin /dependents check_env.exe
+      - name: Rename with version
+        shell: bash
+        run: mv check_env.exe check_env_${{ steps.get_version.outputs.version }}.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: check_env
-          path: check_env.exe
+          path: check_env_*.exe
           retention-days: 90
 
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     permissions:
       contents: write
 
@@ -50,13 +68,11 @@ jobs:
           name: check_env
           path: ./release
 
-      - name: List release files
-        run: ls -la ./release/
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          files: ./release/check_env.exe
+          tag_name: ${{ needs.build.outputs.version }}
+          files: ./release/check_env_*.exe
           generate_release_notes: true
           draft: false
           prerelease: false
