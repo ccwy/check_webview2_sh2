@@ -15,26 +15,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            mingw-w64-x86_64-gcc
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Build with GCC (static linking)
-        shell: msys2 {0}
+      - name: Build
+        shell: cmd
         run: |
-          windres resource.rc -o resource.o
-          gcc check_env.c resource.o -o check_env.exe -Wall -O2 -static -mwindows -ladvapi32 -lversion -lshell32 -lcomctl32
-          echo "Build successful"
+          rc resource.rc
+          cl check_env.c resource.res /MT /O2 /Fe:check_env.exe advapi32.lib version.lib shell32.lib comctl32.lib
 
       - name: Verify exe
-        shell: msys2 {0}
+        shell: cmd
         run: |
-          file check_env.exe
-          objdump -p check_env.exe | grep "DLL Name" || true
+          dumpbin /dependents check_env.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
