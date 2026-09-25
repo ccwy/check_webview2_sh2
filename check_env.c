@@ -328,14 +328,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 if (g_is64bit) {
                     SWPRINTF(linkText, 800,
                         L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01:  \x672A\x5B89\x88C5  \x2717    "
-                        L"<a href=\"%s\">\x4E0B\x8F7D\x8865\x4E01 (x64)</a>  "
-                        L"<a href=\"%s\">\x5FAE\x8F6F\x66F4\x65B0\x76EE\x5F55</a>",
+                        L"<a href=\"%s\">\x7F51\x76D8\x4E0B\x8F7D (x64)</a>  "
+                        L"<a href=\"%s\">\x5B98\x65B9\x4E0B\x8F7D</a>",
                         URL_SHA2_X64, URL_SHA2_CATALOG);
                 } else {
                     SWPRINTF(linkText, 800,
                         L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01:  \x672A\x5B89\x88C5  \x2717    "
-                        L"<a href=\"%s\">\x4E0B\x8F7D\x8865\x4E01 (x86)</a>  "
-                        L"<a href=\"%s\">\x5FAE\x8F6F\x66F4\x65B0\x76EE\x5F55</a>",
+                        L"<a href=\"%s\">\x7F51\x76D8\x4E0B\x8F7D (x86)</a>  "
+                        L"<a href=\"%s\">\x5B98\x65B9\x4E0B\x8F7D</a>",
                         URL_SHA2_X86, URL_SHA2_CATALOG);
                 }
                 HWND hLink = CreateWindowW(WC_LINK, linkText,
@@ -372,7 +372,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 wchar_t linkText[800];
                 SWPRINTF(linkText, 800,
                     L"WebView2\x8FD0\x884C\x65F6:  \x672A\x5B89\x88C5  \x2717    "
-                    L"<a href=\"%s\">\x4E0B\x8F7D\x8FD0\x884C\x65F6</a>  "
+                    L"<a href=\"%s\">\x5B98\x65B9\x4E0B\x8F7D</a>  "
                     L"<a href=\"%s\">\x5B98\x65B9\x4E0B\x8F7D\x9875\x9762</a>",
                     URL_WEBVIEW2_DL, URL_WEBVIEW2);
                 HWND hLink = CreateWindowW(WC_LINK, linkText,
