@@ -300,6 +300,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         int dpi = GetDeviceCaps(hdc, LOGPIXELSY);
         ReleaseDC(hwnd, hdc);
 
+        /* DPI缩放因子 (96dpi=100, 120dpi=125, 144dpi=150) */
+        int scale = MulDiv(100, dpi, 96);
+
         HFONT hFont = CreateFontW(
             -MulDiv(9, dpi, 72),
             0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
@@ -313,21 +316,30 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei UI"
         );
 
-        int y = 16;
-        int xIcon = 18;
-        int xText = 52;
-        int xLink = 52;
-        int lineH = 26;
-        int sectionGap = 12;
+        /* DPI感知的布局参数 */
+        int xIcon   = MulDiv(18, scale, 100);
+        int xText   = MulDiv(52, scale, 100);
+        int xLink   = MulDiv(52, scale, 100);
+        int lineH   = MulDiv(28, scale, 100);
+        int ctrlH   = MulDiv(30, scale, 100);   /* 静态文本控件高度 */
+        int linkH   = MulDiv(32, scale, 100);   /* SysLink控件高度 */
+        int ctrlW   = MulDiv(500, scale, 100);  /* 文本控件宽度 */
+        int linkW   = MulDiv(540, scale, 100);  /* 链接控件宽度 */
+        int titleH  = MulDiv(30, scale, 100);
+        int btnW    = MulDiv(120, scale, 100);
+        int btnH    = MulDiv(34, scale, 100);
+        int sectionGap = MulDiv(14, scale, 100);
         int staticId = ID_STATIC_BASE;
         int linkId = ID_LINK_BASE;
+
+        int y = MulDiv(16, scale, 100);
 
         /* 标题 */
         HWND hTitle = CreateWindowW(L"STATIC", L"\x7CFB\x7EDF\x73AF\x5883\x68C0\x67E5\x7ED3\x679C",
             WS_CHILD | WS_VISIBLE | SS_LEFT,
-            xIcon, y, 440, 28, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
+            xIcon, y, ctrlW, titleH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
         SendMessageW(hTitle, WM_SETFONT, (WPARAM)hFontBold, TRUE);
-        y += 36;
+        y += titleH + MulDiv(8, scale, 100);
 
         /* OS版本 */
         const wchar_t *edition = L"Windows";
@@ -346,7 +358,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
         HWND hOS = CreateWindowW(L"STATIC", osText,
             WS_CHILD | WS_VISIBLE | SS_LEFT,
-            xText, y, 440, lineH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
+            xText, y, ctrlW, ctrlH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
         SendMessageW(hOS, WM_SETFONT, (WPARAM)hFont, TRUE);
         y += lineH;
 
@@ -356,7 +368,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
         HWND hArch = CreateWindowW(L"STATIC", archText,
             WS_CHILD | WS_VISIBLE | SS_LEFT,
-            xText, y, 440, lineH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
+            xText, y, ctrlW, ctrlH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
         SendMessageW(hArch, WM_SETFONT, (WPARAM)hFont, TRUE);
         y += lineH + sectionGap;
 
@@ -374,7 +386,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
             HWND hSha2 = CreateWindowW(L"STATIC", sha2Status,
                 WS_CHILD | WS_VISIBLE | SS_LEFT,
-                xText, y, 440, lineH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
+                xText, y, ctrlW, ctrlH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
             SendMessageW(hSha2, WM_SETFONT, (WPARAM)hFont, TRUE);
             y += lineH;
 
@@ -394,9 +406,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
                 HWND hLink = CreateWindowW(L"LINK", linkText,
                     WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                    xLink, y, 460, lineH, hwnd, (HMENU)(INT_PTR)linkId++, cs->hInstance, NULL);
+                    xLink, y, linkW, linkH, hwnd, (HMENU)(INT_PTR)linkId++, cs->hInstance, NULL);
                 SendMessageW(hLink, WM_SETFONT, (WPARAM)hFont, TRUE);
-                y += lineH + 4;
+                y += linkH + MulDiv(4, scale, 100);
             }
             y += sectionGap;
         }
@@ -424,7 +436,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
             HWND hWV2 = CreateWindowW(L"STATIC", wv2Text,
                 WS_CHILD | WS_VISIBLE | SS_LEFT,
-                xText, y, 440, lineH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
+                xText, y, ctrlW, ctrlH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
             SendMessageW(hWV2, WM_SETFONT, (WPARAM)hFont, TRUE);
             y += lineH;
 
@@ -437,23 +449,25 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
                 HWND hLink = CreateWindowW(L"LINK", linkText,
                     WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                    xLink, y, 460, lineH, hwnd, (HMENU)(INT_PTR)linkId++, cs->hInstance, NULL);
+                    xLink, y, linkW, linkH, hwnd, (HMENU)(INT_PTR)linkId++, cs->hInstance, NULL);
                 SendMessageW(hLink, WM_SETFONT, (WPARAM)hFont, TRUE);
-                y += lineH + 4;
+                y += linkH + MulDiv(4, scale, 100);
             }
         }
 
-        y += sectionGap + 8;
+        y += sectionGap + MulDiv(8, scale, 100);
 
         /* 关闭按钮 */
+        int btnX = MulDiv(200, scale, 100);
         HWND hBtn = CreateWindowW(L"BUTTON", L"\x5173\x95ED",
             WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-            190, y, 120, 32, hwnd, (HMENU)IDC_CLOSE_BTN, cs->hInstance, NULL);
+            btnX, y, btnW, btnH, hwnd, (HMENU)IDC_CLOSE_BTN, cs->hInstance, NULL);
         SendMessageW(hBtn, WM_SETFONT, (WPARAM)hFont, TRUE);
-        y += 32 + 16;
+        y += btnH + MulDiv(16, scale, 100);
 
-        /* 用AdjustWindowRect计算包含非客户区的正确窗口高度 */
-        RECT rc = {0, 0, 520, y};
+        /* 用AdjustWindowRect计算包含非客户区的正确窗口尺寸 */
+        int clientW = MulDiv(560, scale, 100);
+        RECT rc = {0, 0, clientW, y};
         AdjustWindowRect(&rc, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE);
         SetWindowPos(hwnd, NULL, 0, 0, rc.right - rc.left, rc.bottom - rc.top,
                      SWP_NOMOVE | SWP_NOZORDER);
@@ -564,7 +578,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     g_hWndMain = CreateWindowExW(
         0, L"CheckEnvWnd", L"\x7CFB\x7EDF\x73AF\x5883\x68C0\x67E5",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-        CW_USEDEFAULT, CW_USEDEFAULT, 520, 300,
+        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
         NULL, NULL, hInstance, &result
     );
 
