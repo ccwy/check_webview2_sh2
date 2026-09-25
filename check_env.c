@@ -57,12 +57,10 @@ typedef LONG NTSTATUS;
 #define ID_STATIC_BASE      1000
 #define ID_LINK_BASE        2000
 #define IDC_CLOSE_BTN       9000
-#define IDC_COPY_BTN        9001
 
 /* ===== 全局变量 ===== */
 static BOOL g_is64bit = FALSE;
 static HWND g_hWndMain = NULL;
-static wchar_t g_resultText[2048];
 
 /* ===== 辅助函数 ===== */
 
@@ -262,10 +260,8 @@ static void BuildResultText(const CheckResult *r) {
     int cap = (int)(sizeof(g_resultText) / sizeof(wchar_t)) - 1;
     wchar_t tmp[512];
 
-    SWPRINTF(tmp, 512, L"\x64CD\x4F5C\x7CFB\x7EDF: %s (Build %lu)\r\n", ed, r->win_build);
-    AppendText(g_resultText, &n, cap, tmp);
-
-    SWPRINTF(tmp, 512, L"\x7CFB\x7EDF\x67B6\x6784: %s\r\n", r->arch);
+    /* 操作系统 + 架构合并为一行 */
+    SWPRINTF(tmp, 512, L"\x64CD\x4F5C\x7CFB\x7EDF: %s (Build %lu) %s\r\n", ed, r->win_build, r->arch);
     AppendText(g_resultText, &n, cap, tmp);
 
     if (r->win_ver_major < 10) {
@@ -275,13 +271,16 @@ static void BuildResultText(const CheckResult *r) {
             AppendText(g_resultText, &n, cap, L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01: \x672A\x5B89\x88C5 \x2717\r\n");
     }
 
-    if (r->wv2_ok && r->wv2_version[0]) {
-        SWPRINTF(tmp, 512, L"WebView2\x8FD0\x884C\x65F6: \x5DF2\x5B89\x88C5 (\x7248\x672C %s) \x2713\r\n", r->wv2_version);
-        AppendText(g_resultText, &n, cap, tmp);
-    } else if (r->wv2_ok) {
-        AppendText(g_resultText, &n, cap, L"WebView2\x8FD0\x884C\x65F6: \x5DF2\x5B89\x88C5 \x2713\r\n");
-    } else {
-        AppendText(g_resultText, &n, cap, L"WebView2\x8FD0\x884C\x65F6: \x672A\x5B89\x88C5 \x2717\r\n");
+    /* Win10+才显示WebView2 */
+    if (r->win_ver_major >= 10) {
+        if (r->wv2_ok && r->wv2_version[0]) {
+            SWPRINTF(tmp, 512, L"WebView2\x8FD0\x884C\x65F6: \x5DF2\x5B89\x88C5 (\x7248\x672C %s) \x2713\r\n", r->wv2_version);
+            AppendText(g_resultText, &n, cap, tmp);
+        } else if (r->wv2_ok) {
+            AppendText(g_resultText, &n, cap, L"WebView2\x8FD0\x884C\x65F6: \x5DF2\x5B89\x88C5 \x2713\r\n");
+        } else {
+            AppendText(g_resultText, &n, cap, L"WebView2\x8FD0\x884C\x65F6: \x672A\x5B89\x88C5 \x2717\r\n");
+        }
     }
 }
 
@@ -319,33 +318,30 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         ReleaseDC(hwnd, hdc);
         int scale = MulDiv(100, dpi, 96);
 
-        /* 字体 */
+        /* 字体 - 微软雅黑，加大字号 */
         HFONT hFont = CreateFontW(
-            -MulDiv(9, dpi, 72), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+            -MulDiv(11, dpi, 72), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-            CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei UI");
+            CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei");
         HFONT hFontBold = CreateFontW(
-            -MulDiv(10, dpi, 72), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+            -MulDiv(12, dpi, 72), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-            CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei UI");
+            CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei");
 
-        /* DPI感知布局 - 加大控件宽度和行高避免截断 */
-        int margin    = MulDiv(24, scale, 100);
-        int xText     = margin;
-        int xLink     = margin;
-        int lineH     = MulDiv(34, scale, 100);   /* 行高 > 控件高度，防止重叠 */
-        int ctrlH     = MulDiv(26, scale, 100);   /* 文本控件高度 */
-        int linkH     = MulDiv(28, scale, 100);   /* 链接控件高度 */
-        int ctrlW     = MulDiv(660, scale, 100);  /* 文本控件宽度 - 足够显示完整文字 */
-        int linkW     = MulDiv(680, scale, 100);  /* 链接控件宽度 */
-        int titleH    = MulDiv(34, scale, 100);
-        int btnW      = MulDiv(120, scale, 100);
-        int btnH      = MulDiv(34, scale, 100);
-        int sectionGap = MulDiv(12, scale, 100);
-        int indent     = MulDiv(20, scale, 100);  /* 链接缩进 */
-        int staticId = ID_STATIC_BASE;
-        int linkId = ID_LINK_BASE;
-        int y = MulDiv(18, scale, 100);
+        /* DPI感知布局 */
+        int margin     = MulDiv(28, scale, 100);
+        int xText      = margin;
+        int lineH      = MulDiv(38, scale, 100);   /* 行高 > 控件高度 */
+        int ctrlH      = MulDiv(30, scale, 100);   /* 文本控件高度 */
+        int linkH      = MulDiv(34, scale, 100);   /* SysLink控件高度(含链接行) */
+        int ctrlW      = MulDiv(700, scale, 100);  /* 控件宽度 */
+        int titleH     = MulDiv(38, scale, 100);
+        int btnW       = MulDiv(130, scale, 100);
+        int btnH       = MulDiv(38, scale, 100);
+        int sectionGap = MulDiv(10, scale, 100);
+        int staticId   = ID_STATIC_BASE;
+        int linkId     = ID_LINK_BASE;
+        int y = MulDiv(20, scale, 100);
 
         /* 标题 */
         HWND hTitle = CreateWindowW(L"STATIC",
@@ -359,9 +355,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         CreateWindowW(L"STATIC", L"",
             WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ,
             xText, y, ctrlW, 2, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
-        y += MulDiv(10, scale, 100);
+        y += MulDiv(12, scale, 100);
 
-        /* 操作系统 - Windows 11的RtlGetVersion返回dwMajorVersion=10, 需用Build号判断 */
+        /* 操作系统 + 架构 (合并为一行) */
         const wchar_t *edition = L"Windows";
         if (result->win_ver_major == 6 && result->win_ver_minor == 1)
             edition = L"Windows 7";
@@ -374,89 +370,82 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
         wchar_t osText[512];
         SWPRINTF(osText, 512,
-            L"\x64CD\x4F5C\x7CFB\x7EDF:  %s (Build %lu)", edition, result->win_build);
+            L"\x64CD\x4F5C\x7CFB\x7EDF:  %s (Build %lu)  %s", edition, result->win_build, result->arch);
         HWND hOS = CreateWindowW(L"STATIC", osText,
             WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
             xText, y, ctrlW, ctrlH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
         SendMessageW(hOS, WM_SETFONT, (WPARAM)hFont, TRUE);
-        y += lineH;
-
-        /* 系统架构 */
-        wchar_t archText[128];
-        SWPRINTF(archText, 128, L"\x7CFB\x7EDF\x67B6\x6784:  %s", result->arch);
-        HWND hArch = CreateWindowW(L"STATIC", archText,
-            WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
-            xText, y, ctrlW, ctrlH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
-        SendMessageW(hArch, WM_SETFONT, (WPARAM)hFont, TRUE);
         y += lineH + sectionGap;
 
-        /* SHA2补丁 (仅Win7) */
+        /* SHA2补丁 (仅Win7) - 已安装用STATIC，未安装用SysLink(状态+链接同行) */
         if (result->win_ver_major < 10) {
-            const wchar_t *sha2Text = result->sha2_ok ?
-                L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01:  \x5DF2\x5B89\x88C5  \x2713" :
-                L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01:  \x672A\x5B89\x88C5  \x2717";
-
-            HWND hSha2 = CreateWindowW(L"STATIC", sha2Text,
-                WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
-                xText, y, ctrlW, ctrlH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
-            SendMessageW(hSha2, WM_SETFONT, (WPARAM)hFont, TRUE);
-            y += lineH;
-
-            if (!result->sha2_ok) {
-                wchar_t linkText[600];
+            if (result->sha2_ok) {
+                HWND hSha2 = CreateWindowW(L"STATIC",
+                    L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01:  \x5DF2\x5B89\x88C5  \x2713",
+                    WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
+                    xText, y, ctrlW, ctrlH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
+                SendMessageW(hSha2, WM_SETFONT, (WPARAM)hFont, TRUE);
+                y += lineH;
+            } else {
+                /* 未安装: 状态文字+下载链接放在同一个SysLink控件 */
+                wchar_t linkText[800];
                 if (g_is64bit) {
-                    SWPRINTF(linkText, 600,
-                        L"<a href=\"%s\">\x4E0B\x8F7D SHA2\x8865\x4E01 (x64)</a>    "
+                    SWPRINTF(linkText, 800,
+                        L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01:  \x672A\x5B89\x88C5  \x2717    "
+                        L"<a href=\"%s\">\x4E0B\x8F7D\x8865\x4E01 (x64)</a>  "
                         L"<a href=\"%s\">\x5FAE\x8F6F\x66F4\x65B0\x76EE\x5F55</a>",
                         URL_SHA2_X64, URL_SHA2_CATALOG);
                 } else {
-                    SWPRINTF(linkText, 600,
-                        L"<a href=\"%s\">\x4E0B\x8F7D SHA2\x8865\x4E01 (x86)</a>    "
+                    SWPRINTF(linkText, 800,
+                        L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01:  \x672A\x5B89\x88C5  \x2717    "
+                        L"<a href=\"%s\">\x4E0B\x8F7D\x8865\x4E01 (x86)</a>  "
                         L"<a href=\"%s\">\x5FAE\x8F6F\x66F4\x65B0\x76EE\x5F55</a>",
                         URL_SHA2_X86, URL_SHA2_CATALOG);
                 }
                 HWND hLink = CreateWindowW(WC_LINK, linkText,
                     WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                    xLink + indent, y, linkW, linkH, hwnd,
+                    xText, y, ctrlW, linkH, hwnd,
                     (HMENU)(INT_PTR)linkId++, cs->hInstance, NULL);
                 SendMessageW(hLink, WM_SETFONT, (WPARAM)hFont, TRUE);
-                y += linkH + MulDiv(4, scale, 100);
+                y += linkH;
             }
             y += sectionGap;
+            /* Win7不显示WebView2 */
         }
 
-        /* WebView2 */
-        {
-            wchar_t wv2Text[512];
+        /* WebView2 (仅Win10+) - 已安装用STATIC，未安装用SysLink(状态+链接同行) */
+        if (result->win_ver_major >= 10) {
             if (result->wv2_ok && result->wv2_version[0]) {
+                wchar_t wv2Text[512];
                 SWPRINTF(wv2Text, 512,
                     L"WebView2\x8FD0\x884C\x65F6:  \x5DF2\x5B89\x88C5  (\x7248\x672C %s)  \x2713",
                     result->wv2_version);
+                HWND hWV2 = CreateWindowW(L"STATIC", wv2Text,
+                    WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
+                    xText, y, ctrlW, ctrlH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
+                SendMessageW(hWV2, WM_SETFONT, (WPARAM)hFont, TRUE);
+                y += lineH;
             } else if (result->wv2_ok) {
-                wcscpy(wv2Text, L"WebView2\x8FD0\x884C\x65F6:  \x5DF2\x5B89\x88C5  \x2713");
+                HWND hWV2 = CreateWindowW(L"STATIC",
+                    L"WebView2\x8FD0\x884C\x65F6:  \x5DF2\x5B89\x88C5  \x2713",
+                    WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
+                    xText, y, ctrlW, ctrlH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
+                SendMessageW(hWV2, WM_SETFONT, (WPARAM)hFont, TRUE);
+                y += lineH;
             } else {
-                wcscpy(wv2Text, L"WebView2\x8FD0\x884C\x65F6:  \x672A\x5B89\x88C5  \x2717");
-            }
-
-            HWND hWV2 = CreateWindowW(L"STATIC", wv2Text,
-                WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
-                xText, y, ctrlW, ctrlH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
-            SendMessageW(hWV2, WM_SETFONT, (WPARAM)hFont, TRUE);
-            y += lineH;
-
-            if (!result->wv2_ok) {
-                wchar_t linkText[600];
-                SWPRINTF(linkText, 600,
-                    L"<a href=\"%s\">\x4E0B\x8F7D WebView2\x8FD0\x884C\x65F6</a>    "
+                /* 未安装: 状态文字+下载链接放在同一个SysLink控件 */
+                wchar_t linkText[800];
+                SWPRINTF(linkText, 800,
+                    L"WebView2\x8FD0\x884C\x65F6:  \x672A\x5B89\x88C5  \x2717    "
+                    L"<a href=\"%s\">\x4E0B\x8F7D\x8FD0\x884C\x65F6</a>  "
                     L"<a href=\"%s\">\x5B98\x65B9\x4E0B\x8F7D\x9875\x9762</a>",
                     URL_WEBVIEW2_DL, URL_WEBVIEW2);
-
                 HWND hLink = CreateWindowW(WC_LINK, linkText,
                     WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                    xLink + indent, y, linkW, linkH, hwnd,
+                    xText, y, ctrlW, linkH, hwnd,
                     (HMENU)(INT_PTR)linkId++, cs->hInstance, NULL);
                 SendMessageW(hLink, WM_SETFONT, (WPARAM)hFont, TRUE);
-                y += linkH + MulDiv(4, scale, 100);
+                y += linkH;
             }
         }
 
@@ -464,7 +453,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
         /* 按钮: 复制结果 + 关闭 */
         int btnGap = MulDiv(16, scale, 100);
-        int clientW = MulDiv(720, scale, 100);
+        int clientW = MulDiv(760, scale, 100);
         int totalBtnW = btnW * 2 + btnGap;
         int btnStartX = (clientW - totalBtnW) / 2;
 
@@ -571,7 +560,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     if (osvi.dwMajorVersion < 10) {
         result.sha2_ok = CheckSHA2Patch();
     }
-    result.wv2_ok = CheckWebView2(result.wv2_version, sizeof(result.wv2_version) / sizeof(wchar_t));
+    /* Win10+才检测WebView2 */
+    if (osvi.dwMajorVersion >= 10) {
+        result.wv2_ok = CheckWebView2(result.wv2_version, sizeof(result.wv2_version) / sizeof(wchar_t));
+    }
 
     /* 注册窗口类 */
     WNDCLASSEXW wc = {0};
