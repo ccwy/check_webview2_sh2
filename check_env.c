@@ -8,8 +8,8 @@
  *   - 支持复制检测结果到剪贴板
  *
  * 编译:
- *   MSVC:  cl check_env.c /MT /Fe:check_env.exe advapi32.lib version.lib shell32.lib comctl32.lib resource.res
- *   MinGW: windres resource.rc -o resource.o && gcc check_env.c resource.o -static -mwindows -o check_env.exe -ladvapi32 -lversion -lshell32 -lcomctl32
+ *   MSVC:  cl check_env.c /MT /Fe:check_env.exe advapi32.lib version.lib shell32.lib comctl32.lib user32.lib gdi32.lib resource.res
+ *   MinGW: windres resource.rc -o resource.o && gcc check_env.c resource.o -static -mwindows -o check_env.exe -ladvapi32 -lversion -lshell32 -lcomctl32 -luser32 -lgdi32
  */
 
 #include <windows.h>
@@ -27,6 +27,8 @@ typedef LONG NTSTATUS;
 #pragma comment(lib, "version.lib")
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "comctl32.lib")
+#pragma comment(lib, "user32.lib")
+#pragma comment(lib, "gdi32.lib")
 #endif
 
 /* swprintf统一使用C99签名 (buf, size, fmt, ...) - MSVC 2015+和MinGW均支持 */
@@ -59,7 +61,6 @@ typedef LONG NTSTATUS;
 
 /* ===== 全局变量 ===== */
 static BOOL g_is64bit = FALSE;
-static HINSTANCE g_hInst = NULL;
 static HWND g_hWndMain = NULL;
 static wchar_t g_resultText[2048];
 
@@ -92,12 +93,22 @@ static BOOL RegQueryStringValue(HKEY root, LPCWSTR subKey, LPCWSTR valueName,
                                  wchar_t *buffer, DWORD bufChars) {
     HKEY hKey;
     DWORD type = 0;
-    DWORD dataSize = bufChars * sizeof(wchar_t);
+    DWORD dataSize = (bufChars - 1) * sizeof(wchar_t);  /* 预留1字符给null终止 */
+    buffer[0] = L'\0';
     if (RegOpenKeyExW(root, subKey, 0, KEY_READ, &hKey) != ERROR_SUCCESS)
         return FALSE;
     LONG result = RegQueryValueExW(hKey, valueName, NULL, &type, (LPBYTE)buffer, &dataSize);
     RegCloseKey(hKey);
-    return (result == ERROR_SUCCESS && type == REG_SZ);
+    if (result == ERROR_SUCCESS && type == REG_SZ) {
+        /* 确保null终止 - 注册表值可能不包含终止符 */
+        DWORD charCount = dataSize / sizeof(wchar_t);
+        if (charCount < bufChars)
+            buffer[charCount] = L'\0';
+        else
+            buffer[bufChars - 1] = L'\0';
+        return TRUE;
+    }
+    return FALSE;
 }
 
 static BOOL FileExistsW(LPCWSTR path) {
@@ -230,6 +241,16 @@ static void OpenURL(LPCWSTR url) {
 }
 
 /* 构建纯文本结果用于剪贴板 */
+static void AppendText(wchar_t *buf, int *pos, int cap, const wchar_t *text) {
+    int len = (int)wcslen(text);
+    if (*pos + len >= cap) len = cap - *pos;
+    if (len > 0) {
+        memcpy(buf + *pos, text, len * sizeof(wchar_t));
+        *pos += len;
+    }
+    buf[*pos] = L'\0';
+}
+
 static void BuildResultText(const CheckResult *r) {
     const wchar_t *ed = L"Windows";
     if (r->win_ver_major == 6 && r->win_ver_minor == 1) ed = L"Windows 7";
@@ -239,29 +260,29 @@ static void BuildResultText(const CheckResult *r) {
 
     int n = 0;
     int cap = (int)(sizeof(g_resultText) / sizeof(wchar_t)) - 1;
-    n += SWPRINTF(g_resultText + n, cap - n,
-        L"\x64CD\x4F5C\x7CFB\x7EDF: %s (Build %lu)\r\n", ed, r->win_build);
-    n += SWPRINTF(g_resultText + n, cap - n,
-        L"\x7CFB\x7EDF\x67B6\x6784: %s\r\n", r->arch);
+    wchar_t tmp[512];
+
+    SWPRINTF(tmp, 512, L"\x64CD\x4F5C\x7CFB\x7EDF: %s (Build %lu)\r\n", ed, r->win_build);
+    AppendText(g_resultText, &n, cap, tmp);
+
+    SWPRINTF(tmp, 512, L"\x7CFB\x7EDF\x67B6\x6784: %s\r\n", r->arch);
+    AppendText(g_resultText, &n, cap, tmp);
 
     if (r->win_ver_major < 10) {
         if (r->sha2_ok)
-            n += SWPRINTF(g_resultText + n, cap - n,
-                L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01: \x5DF2\x5B89\x88C5 \x2713\r\n");
+            AppendText(g_resultText, &n, cap, L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01: \x5DF2\x5B89\x88C5 \x2713\r\n");
         else
-            n += SWPRINTF(g_resultText + n, cap - n,
-                L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01: \x672A\x5B89\x88C5 \x2717\r\n");
+            AppendText(g_resultText, &n, cap, L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01: \x672A\x5B89\x88C5 \x2717\r\n");
     }
 
-    if (r->wv2_ok && r->wv2_version[0])
-        n += SWPRINTF(g_resultText + n, cap - n,
-            L"WebView2\x8FD0\x884C\x65F6: \x5DF2\x5B89\x88C5 (\x7248\x672C %s) \x2713\r\n", r->wv2_version);
-    else if (r->wv2_ok)
-        n += SWPRINTF(g_resultText + n, cap - n,
-            L"WebView2\x8FD0\x884C\x65F6: \x5DF2\x5B89\x88C5 \x2713\r\n");
-    else
-        n += SWPRINTF(g_resultText + n, cap - n,
-            L"WebView2\x8FD0\x884C\x65F6: \x672A\x5B89\x88C5 \x2717\r\n");
+    if (r->wv2_ok && r->wv2_version[0]) {
+        SWPRINTF(tmp, 512, L"WebView2\x8FD0\x884C\x65F6: \x5DF2\x5B89\x88C5 (\x7248\x672C %s) \x2713\r\n", r->wv2_version);
+        AppendText(g_resultText, &n, cap, tmp);
+    } else if (r->wv2_ok) {
+        AppendText(g_resultText, &n, cap, L"WebView2\x8FD0\x884C\x65F6: \x5DF2\x5B89\x88C5 \x2713\r\n");
+    } else {
+        AppendText(g_resultText, &n, cap, L"WebView2\x8FD0\x884C\x65F6: \x672A\x5B89\x88C5 \x2717\r\n");
+    }
 }
 
 /* 复制到剪贴板 */
@@ -394,7 +415,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                         L"<a href=\"%s\">\x5FAE\x8F6F\x66F4\x65B0\x76EE\x5F55</a>",
                         URL_SHA2_X86, URL_SHA2_CATALOG);
                 }
-                HWND hLink = CreateWindowW(L"LINK", linkText,
+                HWND hLink = CreateWindowW(WC_LINK, linkText,
                     WS_CHILD | WS_VISIBLE | WS_TABSTOP,
                     xLink + indent, y, linkW, linkH, hwnd,
                     (HMENU)(INT_PTR)linkId++, cs->hInstance, NULL);
@@ -412,11 +433,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     L"WebView2\x8FD0\x884C\x65F6:  \x5DF2\x5B89\x88C5  (\x7248\x672C %s)  \x2713",
                     result->wv2_version);
             } else if (result->wv2_ok) {
-                SWPRINTF(wv2Text, 512,
-                    L"WebView2\x8FD0\x884C\x65F6:  \x5DF2\x5B89\x88C5  \x2713");
+                wcscpy(wv2Text, L"WebView2\x8FD0\x884C\x65F6:  \x5DF2\x5B89\x88C5  \x2713");
             } else {
-                SWPRINTF(wv2Text, 512,
-                    L"WebView2\x8FD0\x884C\x65F6:  \x672A\x5B89\x88C5  \x2717");
+                wcscpy(wv2Text, L"WebView2\x8FD0\x884C\x65F6:  \x672A\x5B89\x88C5  \x2717");
             }
 
             HWND hWV2 = CreateWindowW(L"STATIC", wv2Text,
@@ -432,7 +451,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     L"<a href=\"%s\">\x5B98\x65B9\x4E0B\x8F7D\x9875\x9762</a>",
                     URL_WEBVIEW2_DL, URL_WEBVIEW2);
 
-                HWND hLink = CreateWindowW(L"LINK", linkText,
+                HWND hLink = CreateWindowW(WC_LINK, linkText,
                     WS_CHILD | WS_VISIBLE | WS_TABSTOP,
                     xLink + indent, y, linkW, linkH, hwnd,
                     (HMENU)(INT_PTR)linkId++, cs->hInstance, NULL);
@@ -516,7 +535,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                    LPSTR lpCmdLine, int nCmdShow)
 {
     (void)hPrevInstance; (void)lpCmdLine; (void)nCmdShow;
-    g_hInst = hInstance;
 
     /* 初始化Common Controls */
     INITCOMMONCONTROLSEX icc = {
@@ -549,6 +567,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     result.win_build = osvi.dwBuildNumber;
     const wchar_t *arch = GetArchStringW();
     wcsncpy(result.arch, arch, sizeof(result.arch) / sizeof(wchar_t) - 1);
+    result.arch[sizeof(result.arch) / sizeof(wchar_t) - 1] = L'\0';
     if (osvi.dwMajorVersion < 10) {
         result.sha2_ok = CheckSHA2Patch();
     }

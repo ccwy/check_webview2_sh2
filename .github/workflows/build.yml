@@ -22,7 +22,7 @@ jobs:
         shell: cmd
         run: |
           rc resource.rc
-          cl check_env.c resource.res /MT /O2 /Fe:check_env.exe advapi32.lib version.lib shell32.lib comctl32.lib
+          cl check_env.c resource.res /MT /O2 /Fe:check_env.exe advapi32.lib version.lib shell32.lib comctl32.lib user32.lib gdi32.lib
 
       - name: Verify exe
         shell: cmd
