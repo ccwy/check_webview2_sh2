@@ -238,26 +238,34 @@ static void BuildResultText(const CheckResult *r) {
     const wchar_t *ed = L"Windows";
     if (r->win_ver_major == 6 && r->win_ver_minor == 1) ed = L"Windows 7";
     else if (r->win_ver_major == 6 && r->win_ver_minor == 3) ed = L"Windows 8.1";
+    else if (r->win_ver_major == 10 && r->win_build >= 22000) ed = L"Windows 11";
     else if (r->win_ver_major == 10) ed = L"Windows 10";
-    else if (r->win_ver_major >= 11) ed = L"Windows 11";
 
     int n = 0;
-    n += swprintf(g_resultText + n, L"\x64CD\x4F5C\x7CFB\x7EDF: %s (Build %lu)\r\n", ed, r->win_build);
-    n += swprintf(g_resultText + n, L"\x7CFB\x7EDF\x67B6\x6784: %s\r\n", r->arch);
+    int cap = (int)(sizeof(g_resultText) / sizeof(wchar_t)) - 1;
+    n += SWPRINTF(g_resultText + n, cap - n,
+        L"\x64CD\x4F5C\x7CFB\x7EDF: %s (Build %lu)\r\n", ed, r->win_build);
+    n += SWPRINTF(g_resultText + n, cap - n,
+        L"\x7CFB\x7EDF\x67B6\x6784: %s\r\n", r->arch);
 
     if (r->win_ver_major < 10) {
         if (r->sha2_ok)
-            n += swprintf(g_resultText + n, L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01: \x5DF2\x5B89\x88C5 \x2713\r\n");
+            n += SWPRINTF(g_resultText + n, cap - n,
+                L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01: \x5DF2\x5B89\x88C5 \x2713\r\n");
         else
-            n += swprintf(g_resultText + n, L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01: \x672A\x5B89\x88C5 \x2717\r\n");
+            n += SWPRINTF(g_resultText + n, cap - n,
+                L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01: \x672A\x5B89\x88C5 \x2717\r\n");
     }
 
     if (r->wv2_ok && r->wv2_version[0])
-        n += swprintf(g_resultText + n, L"WebView2\x8FD0\x884C\x65F6: \x5DF2\x5B89\x88C5 (\x7248\x672C %s) \x2713\r\n", r->wv2_version);
+        n += SWPRINTF(g_resultText + n, cap - n,
+            L"WebView2\x8FD0\x884C\x65F6: \x5DF2\x5B89\x88C5 (\x7248\x672C %s) \x2713\r\n", r->wv2_version);
     else if (r->wv2_ok)
-        n += swprintf(g_resultText + n, L"WebView2\x8FD0\x884C\x65F6: \x5DF2\x5B89\x88C5 \x2713\r\n");
+        n += SWPRINTF(g_resultText + n, cap - n,
+            L"WebView2\x8FD0\x884C\x65F6: \x5DF2\x5B89\x88C5 \x2713\r\n");
     else
-        n += swprintf(g_resultText + n, L"WebView2\x8FD0\x884C\x65F6: \x672A\x5B89\x88C5 \x2717\r\n");
+        n += SWPRINTF(g_resultText + n, cap - n,
+            L"WebView2\x8FD0\x884C\x65F6: \x672A\x5B89\x88C5 \x2717\r\n");
 }
 
 /* 复制到剪贴板 */
@@ -336,16 +344,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             xText, y, ctrlW, 2, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
         y += MulDiv(10, scale, 100);
 
-        /* 操作系统 */
+        /* 操作系统 - Windows 11的RtlGetVersion返回dwMajorVersion=10, 需用Build号判断 */
         const wchar_t *edition = L"Windows";
         if (result->win_ver_major == 6 && result->win_ver_minor == 1)
             edition = L"Windows 7";
         else if (result->win_ver_major == 6 && result->win_ver_minor == 3)
             edition = L"Windows 8.1";
+        else if (result->win_ver_major == 10 && result->win_build >= 22000)
+            edition = L"Windows 11";
         else if (result->win_ver_major == 10)
             edition = L"Windows 10";
-        else if (result->win_ver_major >= 11)
-            edition = L"Windows 11";
 
         wchar_t osText[512];
         SWPRINTF(osText, 512,
