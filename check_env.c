@@ -62,16 +62,16 @@ static HWND g_hWndMain = NULL;
 
 /* ===== 辅助函数 ===== */
 
-static const char* GetArchStringA(void) {
+static const wchar_t* GetArchStringW(void) {
     SYSTEM_INFO si;
     GetNativeSystemInfo(&si);
     g_is64bit = (si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 ||
                  si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM64);
     switch (si.wProcessorArchitecture) {
-        case PROCESSOR_ARCHITECTURE_AMD64: return "x64";
-        case PROCESSOR_ARCHITECTURE_ARM64: return "ARM64";
-        case PROCESSOR_ARCHITECTURE_INTEL:  return "x86";
-        default: return "Unknown";
+        case PROCESSOR_ARCHITECTURE_AMD64: return L"x64";
+        case PROCESSOR_ARCHITECTURE_ARM64: return L"ARM64";
+        case PROCESSOR_ARCHITECTURE_INTEL:  return L"x86";
+        default: return L"Unknown";
     }
 }
 
@@ -230,22 +230,11 @@ typedef struct {
     BOOL sha2_ok;
     BOOL wv2_ok;
     wchar_t wv2_version[64];
-    char arch[16];
+    wchar_t arch[16];
     DWORD win_ver_major;
     DWORD win_ver_minor;
     DWORD win_build;
 } CheckResult;
-
-/* 计算所需窗口高度 */
-static int CalcWindowHeight(const CheckResult *r) {
-    int lines = 4; /* 标题 + OS行 + 架构行 + 空行 */
-    if (r->win_ver_major < 10) {
-        lines += 2; /* SHA2状态 + SHA2链接 */
-    }
-    lines += 2; /* WebView2状态 + WebView2链接 */
-    lines += 2; /* 空行 + 关闭按钮 */
-    return lines * 28 + 40;
-}
 
 /* 打开URL */
 static void OpenURL(LPCWSTR url) {
@@ -272,12 +261,10 @@ static HICON CreateStatusIcon(BOOL pass) {
     Ellipse(memDC, m, m, size - m, size - m);
 
     if (pass) {
-        /* 对勾 */
         MoveToEx(memDC, size * 2 / 8, size * 5 / 8, NULL);
         LineTo(memDC, size * 4 / 8, size * 7 / 8 - 1);
         LineTo(memDC, size * 6 / 8 + 1, size * 2 / 8);
     } else {
-        /* 叉号 */
         MoveToEx(memDC, size * 3 / 8, size * 3 / 8, NULL);
         LineTo(memDC, size * 5 / 8 + 1, size * 5 / 8 + 1);
         MoveToEx(memDC, size * 5 / 8 + 1, size * 3 / 8, NULL);
@@ -296,7 +283,6 @@ static HICON CreateStatusIcon(BOOL pass) {
     ii.fIcon = TRUE;
     ii.hbmColor = bmp;
     ii.hbmMask = bmp;
-    /* CreateIconIndirect takes ownership of bitmaps */
     HICON icon = CreateIconIndirect(&ii);
     return icon;
 }
@@ -306,116 +292,113 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 {
     switch (msg) {
     case WM_CREATE: {
-        /* 存储CheckResult指针 */
         CREATESTRUCTW *cs = (CREATESTRUCTW*)lParam;
         CheckResult *result = (CheckResult*)cs->lpCreateParams;
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)result);
 
+        HDC hdc = GetDC(hwnd);
+        int dpi = GetDeviceCaps(hdc, LOGPIXELSY);
+        ReleaseDC(hwnd, hdc);
+
         HFONT hFont = CreateFontW(
-            -MulDiv(9, GetDeviceCaps(GetDC(hwnd), LOGPIXELSY), 72),
+            -MulDiv(9, dpi, 72),
             0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
             CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei UI"
         );
         HFONT hFontBold = CreateFontW(
-            -MulDiv(10, GetDeviceCaps(GetDC(hwnd), LOGPIXELSY), 72),
+            -MulDiv(10, dpi, 72),
             0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
             CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei UI"
         );
 
-        int y = 12;
-        int xIcon = 16;
-        int xText = 48;
-        int xLink = 48;
+        int y = 16;
+        int xIcon = 18;
+        int xText = 52;
+        int xLink = 52;
+        int lineH = 26;
+        int sectionGap = 12;
         int staticId = ID_STATIC_BASE;
         int linkId = ID_LINK_BASE;
 
         /* 标题 */
-        HWND hTitle = CreateWindowW(L"STATIC", L"系统环境检查结果",
+        HWND hTitle = CreateWindowW(L"STATIC", L"\x7CFB\x7EDF\x73AF\x5883\x68C0\x67E5\x7ED3\x679C",
             WS_CHILD | WS_VISIBLE | SS_LEFT,
-            xIcon, y, 400, 24, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
+            xIcon, y, 440, 28, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
         SendMessageW(hTitle, WM_SETFONT, (WPARAM)hFontBold, TRUE);
-        y += 32;
+        y += 36;
 
         /* OS版本 */
-        char osText[256];
-        const char *edition = "";
+        const wchar_t *edition = L"Windows";
         if (result->win_ver_major == 6 && result->win_ver_minor == 1)
-            edition = "Windows 7";
+            edition = L"Windows 7";
         else if (result->win_ver_major == 6 && result->win_ver_minor == 3)
-            edition = "Windows 8.1";
+            edition = L"Windows 8.1";
         else if (result->win_ver_major == 10)
-            edition = "Windows 10";
-        else if (result->win_ver_major == 11)
-            edition = "Windows 11";
-        else
-            edition = "Windows";
+            edition = L"Windows 10";
+        else if (result->win_ver_major >= 11)
+            edition = L"Windows 11";
 
-        snprintf(osText, sizeof(osText), "操作系统: %s (Build %lu)", edition, result->win_build);
-        wchar_t osTextW[256];
-        MultiByteToWideChar(CP_ACP, 0, osText, -1, osTextW, 256);
+        wchar_t osText[256];
+        swprintf(osText, 256,
+            L"\x64CD\x4F5C\x7CFB\x7EDF: %s (Build %lu)", edition, result->win_build);
 
-        HWND hOS = CreateWindowW(L"STATIC", osTextW,
+        HWND hOS = CreateWindowW(L"STATIC", osText,
             WS_CHILD | WS_VISIBLE | SS_LEFT,
-            xText, y, 400, 20, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
+            xText, y, 440, lineH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
         SendMessageW(hOS, WM_SETFONT, (WPARAM)hFont, TRUE);
-        y += 24;
+        y += lineH;
 
         /* 架构 */
-        char archText[64];
-        snprintf(archText, sizeof(archText), "系统架构: %s", result->arch);
-        wchar_t archTextW[64];
-        MultiByteToWideChar(CP_ACP, 0, archText, -1, archTextW, 64);
+        wchar_t archText[64];
+        swprintf(archText, 64, L"\x7CFB\x7EDF\x67B6\x6784: %s", result->arch);
 
-        HWND hArch = CreateWindowW(L"STATIC", archTextW,
+        HWND hArch = CreateWindowW(L"STATIC", archText,
             WS_CHILD | WS_VISIBLE | SS_LEFT,
-            xText, y, 400, 20, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
+            xText, y, 440, lineH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
         SendMessageW(hArch, WM_SETFONT, (WPARAM)hFont, TRUE);
-        y += 32;
+        y += lineH + sectionGap;
 
         /* SHA2补丁 (仅Win7) */
         if (result->win_ver_major < 10) {
-            /* 图标 */
             HICON hIcon = CreateStatusIcon(result->sha2_ok);
             HWND hIconCtrl = CreateWindowW(L"STATIC", L"",
                 WS_CHILD | WS_VISIBLE | SS_ICON | SS_CENTERIMAGE,
-                xIcon, y - 2, 20, 20, hwnd, (HMENU)IDC_ICON_PASS, cs->hInstance, NULL);
+                xIcon, y, 20, 20, hwnd, (HMENU)IDC_ICON_PASS, cs->hInstance, NULL);
             SendMessageW(hIconCtrl, STM_SETICON, (WPARAM)hIcon, 0);
 
-            /* 状态文字 */
-            const char *sha2Status = result->sha2_ok ?
-                "SHA2代码签名补丁: 已安装 ✓" : "SHA2代码签名补丁: 未安装 ✗";
-            wchar_t sha2StatusW[128];
-            MultiByteToWideChar(CP_ACP, 0, sha2Status, -1, sha2StatusW, 128);
+            const wchar_t *sha2Status = result->sha2_ok ?
+                L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01: \x5DF2\x5B89\x88C5 \x2713" :
+                L"SHA2\x4EE3\x7801\x7B7E\x540D\x8865\x4E01: \x672A\x5B89\x88C5 \x2717";
 
-            HWND hSha2 = CreateWindowW(L"STATIC", sha2StatusW,
+            HWND hSha2 = CreateWindowW(L"STATIC", sha2Status,
                 WS_CHILD | WS_VISIBLE | SS_LEFT,
-                xText, y, 400, 20, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
+                xText, y, 440, lineH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
             SendMessageW(hSha2, WM_SETFONT, (WPARAM)hFont, TRUE);
-            y += 24;
+            y += lineH;
 
-            /* 下载链接 */
             if (!result->sha2_ok) {
                 wchar_t linkText[512];
                 if (g_is64bit) {
                     swprintf(linkText, 512,
-                        L"<a href=\"%s\">下载 SHA2补丁 (x64)</a>  "
-                        L"<a href=\"%s\">微软更新目录</a>",
+                        L"<a href=\"%s\">\x4E0B\x8F7D SHA2\x8865\x4E01 (x64)</a>  "
+                        L"<a href=\"%s\">\x5FAE\x8F6F\x66F4\x65B0\x76EE\x5F55</a>",
                         URL_SHA2_X64, URL_SHA2_CATALOG);
                 } else {
                     swprintf(linkText, 512,
-                        L"<a href=\"%s\">下载 SHA2补丁 (x86)</a>  "
-                        L"<a href=\"%s\">微软更新目录</a>",
+                        L"<a href=\"%s\">\x4E0B\x8F7D SHA2\x8865\x4E01 (x86)</a>  "
+                        L"<a href=\"%s\">\x5FAE\x8F6F\x66F4\x65B0\x76EE\x5F55</a>",
                         URL_SHA2_X86, URL_SHA2_CATALOG);
                 }
 
                 HWND hLink = CreateWindowW(L"LINK", linkText,
                     WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                    xLink, y, 450, 20, hwnd, (HMENU)(INT_PTR)linkId++, cs->hInstance, NULL);
+                    xLink, y, 460, lineH, hwnd, (HMENU)(INT_PTR)linkId++, cs->hInstance, NULL);
                 SendMessageW(hLink, WM_SETFONT, (WPARAM)hFont, TRUE);
-                y += 28;
+                y += lineH + 4;
             }
+            y += sectionGap;
         }
 
         /* WebView2 */
@@ -423,57 +406,65 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             HICON hIcon = CreateStatusIcon(result->wv2_ok);
             HWND hIconCtrl = CreateWindowW(L"STATIC", L"",
                 WS_CHILD | WS_VISIBLE | SS_ICON | SS_CENTERIMAGE,
-                xIcon, y - 2, 20, 20, hwnd, (HMENU)IDC_ICON_FAIL, cs->hInstance, NULL);
+                xIcon, y, 20, 20, hwnd, (HMENU)IDC_ICON_FAIL, cs->hInstance, NULL);
             SendMessageW(hIconCtrl, STM_SETICON, (WPARAM)hIcon, 0);
 
-            char wv2Text[256];
+            wchar_t wv2Text[256];
             if (result->wv2_ok && result->wv2_version[0]) {
-                char verA[64];
-                WideCharToMultiByte(CP_ACP, 0, result->wv2_version, -1, verA, 64, NULL, NULL);
-                snprintf(wv2Text, sizeof(wv2Text), "WebView2运行时: 已安装 (版本 %s) ✓", verA);
+                swprintf(wv2Text, 256,
+                    L"WebView2\x8FD0\x884C\x65F6: \x5DF2\x5B89\x88C5 (\x7248\x672C %s) \x2713",
+                    result->wv2_version);
             } else if (result->wv2_ok) {
-                snprintf(wv2Text, sizeof(wv2Text), "WebView2运行时: 已安装 ✓");
+                swprintf(wv2Text, 256,
+                    L"WebView2\x8FD0\x884C\x65F6: \x5DF2\x5B89\x88C5 \x2713");
             } else {
-                snprintf(wv2Text, sizeof(wv2Text), "WebView2运行时: 未安装 ✗");
+                swprintf(wv2Text, 256,
+                    L"WebView2\x8FD0\x884C\x65F6: \x672A\x5B89\x88C5 \x2717");
             }
-            wchar_t wv2TextW[256];
-            MultiByteToWideChar(CP_ACP, 0, wv2Text, -1, wv2TextW, 256);
 
-            HWND hWV2 = CreateWindowW(L"STATIC", wv2TextW,
+            HWND hWV2 = CreateWindowW(L"STATIC", wv2Text,
                 WS_CHILD | WS_VISIBLE | SS_LEFT,
-                xText, y, 400, 20, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
+                xText, y, 440, lineH, hwnd, (HMENU)(INT_PTR)staticId++, cs->hInstance, NULL);
             SendMessageW(hWV2, WM_SETFONT, (WPARAM)hFont, TRUE);
-            y += 24;
+            y += lineH;
 
             if (!result->wv2_ok) {
                 wchar_t linkText[512];
                 swprintf(linkText, 512,
-                    L"<a href=\"%s\">下载 WebView2运行时</a>  "
-                    L"<a href=\"%s\">官方下载页面</a>",
+                    L"<a href=\"%s\">\x4E0B\x8F7D WebView2\x8FD0\x884C\x65F6</a>  "
+                    L"<a href=\"%s\">\x5B98\x65B9\x4E0B\x8F7D\x9875\x9762</a>",
                     URL_WEBVIEW2_DL, URL_WEBVIEW2);
 
                 HWND hLink = CreateWindowW(L"LINK", linkText,
                     WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                    xLink, y, 450, 20, hwnd, (HMENU)(INT_PTR)linkId++, cs->hInstance, NULL);
+                    xLink, y, 460, lineH, hwnd, (HMENU)(INT_PTR)linkId++, cs->hInstance, NULL);
                 SendMessageW(hLink, WM_SETFONT, (WPARAM)hFont, TRUE);
-                y += 28;
+                y += lineH + 4;
             }
         }
 
-        y += 8;
+        y += sectionGap + 8;
 
         /* 关闭按钮 */
-        HWND hBtn = CreateWindowW(L"BUTTON", L"关闭",
+        HWND hBtn = CreateWindowW(L"BUTTON", L"\x5173\x95ED",
             WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-            180, y, 120, 30, hwnd, (HMENU)IDC_CLOSE_BTN, cs->hInstance, NULL);
+            190, y, 120, 32, hwnd, (HMENU)IDC_CLOSE_BTN, cs->hInstance, NULL);
         SendMessageW(hBtn, WM_SETFONT, (WPARAM)hFont, TRUE);
+        y += 32 + 16;
 
-        /* 调整窗口高度以适应内容 */
-        int totalH = y + 44;
-        RECT rc;
-        GetWindowRect(hwnd, &rc);
-        SetWindowPos(hwnd, NULL, 0, 0, rc.right - rc.left, totalH,
+        /* 用AdjustWindowRect计算包含非客户区的正确窗口高度 */
+        RECT rc = {0, 0, 520, y};
+        AdjustWindowRect(&rc, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE);
+        SetWindowPos(hwnd, NULL, 0, 0, rc.right - rc.left, rc.bottom - rc.top,
                      SWP_NOMOVE | SWP_NOZORDER);
+
+        /* 居中窗口 */
+        int screenW = GetSystemMetrics(SM_CXSCREEN);
+        int screenH = GetSystemMetrics(SM_CYSCREEN);
+        int winW = rc.right - rc.left;
+        int winH = rc.bottom - rc.top;
+        SetWindowPos(hwnd, NULL, (screenW - winW) / 2, (screenH - winH) / 2, 0, 0,
+                     SWP_NOSIZE | SWP_NOZORDER);
 
         break;
     }
@@ -528,8 +519,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     OSVERSIONINFOEXW osvi = {0};
     osvi.dwOSVersionInfoSize = sizeof(osvi);
 
-    /* 使用RtlGetVersion绕过兼容性垫片 */
-    typedef NTSTATUS (WINAPI *RtlGetVersionPtr)(POSVERSIONINFOEXW);
+    typedef LONG (WINAPI *RtlGetVersionPtr)(POSVERSIONINFOEXW);
     HMODULE hNtDll = GetModuleHandleW(L"ntdll.dll");
     RtlGetVersionPtr RtlGetVersion = NULL;
     if (hNtDll) {
@@ -539,7 +529,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     if (RtlGetVersion) {
         RtlGetVersion(&osvi);
     } else {
-        /* 回退到VerifyVersionInfo方式 */
         osvi.dwMajorVersion = 10;
         osvi.dwMinorVersion = 0;
         osvi.dwBuildNumber = 0;
@@ -551,8 +540,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     result.win_ver_minor = osvi.dwMinorVersion;
     result.win_build = osvi.dwBuildNumber;
 
-    const char *arch = GetArchStringA();
-    strncpy(result.arch, arch, sizeof(result.arch) - 1);
+    const wchar_t *arch = GetArchStringW();
+    wcsncpy(result.arch, arch, sizeof(result.arch) / sizeof(wchar_t) - 1);
 
     if (osvi.dwMajorVersion < 10) {
         result.sha2_ok = CheckSHA2Patch();
@@ -571,30 +560,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     wc.lpszClassName = L"CheckEnvWnd";
     RegisterClassExW(&wc);
 
-    /* 计算窗口尺寸 */
-    int winW = 500;
-    int winH = CalcWindowHeight(&result);
-
-    /* 居中 */
-    int screenW = GetSystemMetrics(SM_CXSCREEN);
-    int screenH = GetSystemMetrics(SM_CYSCREEN);
-    int x = (screenW - winW) / 2;
-    int y = (screenH - winH) / 2;
-
-    /* 创建窗口 */
+    /* 创建窗口 - 初始尺寸由WM_CREATE中动态调整 */
     g_hWndMain = CreateWindowExW(
-        0, L"CheckEnvWnd", L"系统环境检查",
+        0, L"CheckEnvWnd", L"\x7CFB\x7EDF\x73AF\x5883\x68C0\x67E5",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-        x, y, winW, winH,
+        CW_USEDEFAULT, CW_USEDEFAULT, 520, 300,
         NULL, NULL, hInstance, &result
     );
 
     if (!g_hWndMain) {
-        MessageBoxW(NULL, L"创建窗口失败", L"错误", MB_OK | MB_ICONERROR);
+        MessageBoxW(NULL, L"\x521B\x5EFA\x7A97\x53E3\x5931\x8D25", L"\x9519\x8BEF", MB_OK | MB_ICONERROR);
         return 1;
     }
 
-    ShowWindow(g_hWndMain, SW_SHOW);
+    ShowWindow(g_hWndMain, nCmdShow);
     UpdateWindow(g_hWndMain);
 
     /* 消息循环 */
