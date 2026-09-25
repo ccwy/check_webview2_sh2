@@ -17,22 +17,39 @@ jobs:
     runs-on: windows-latest
     outputs:
       version: ${{ steps.get_version.outputs.version }}
+      should_release: ${{ steps.get_version.outputs.should_release }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Get version
         id: get_version
         shell: bash
         run: |
+          VERSION=""
+          SHOULD_RELEASE="false"
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            VERSION="${{ github.ref_name }}"
+            SHOULD_RELEASE="true"
           elif [[ -n "${{ github.event.inputs.version }}" ]]; then
-            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+            VERSION="${{ github.event.inputs.version }}"
+            SHOULD_RELEASE="true"
           else
-            echo "version=dev-$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+            TAG=$(git tag --points-at HEAD --list 'v*' | head -1)
+            if [[ -n "$TAG" ]]; then
+              VERSION="$TAG"
+              SHOULD_RELEASE="true"
+            else
+              VERSION="dev-$(git rev-parse --short HEAD)"
+              SHOULD_RELEASE="false"
+            fi
           fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "should_release=$SHOULD_RELEASE" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION, Release: $SHOULD_RELEASE"
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1.13.0
@@ -56,8 +73,8 @@ jobs:
 
   release:
     needs: build
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    if: needs.build.outputs.should_release == 'true'
     permissions:
       contents: write
 
