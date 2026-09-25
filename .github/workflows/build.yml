@@ -1,0 +1,89 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - msystem: MINGW64
+            arch: x64
+            artifact: check_env_x64
+          - msystem: MINGW32
+            arch: x86
+            artifact: check_env_x86
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-i686-gcc
+
+      - name: Build with GCC (static linking)
+        shell: msys2 {0}
+        run: |
+          gcc check_env.c -o check_env.exe -Wall -O2 -static -ladvapi32 -lversion
+          echo "Build successful"
+
+      - name: Verify exe
+        shell: msys2 {0}
+        run: |
+          file check_env.exe
+          objdump -p check_env.exe | grep "DLL Name" || true
+
+      - name: Rename exe
+        shell: pwsh
+        run: |
+          Rename-Item -Path check_env.exe -NewName check_env_${{ matrix.arch }}.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: check_env_${{ matrix.arch }}.exe
+          retention-days: 90
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download x64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: check_env_x64
+          path: ./release
+
+      - name: Download x86 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: check_env_x86
+          path: ./release
+
+      - name: List release files
+        run: ls -la ./release/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./release/*.exe
+          generate_release_notes: true
+          draft: false
+          prerelease: false
