@@ -12,44 +12,49 @@ on:
         description: 'Release version (e.g. v1.0)'
         required: true
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
     outputs:
-      version: ${{ steps.get_version.outputs.version }}
-      should_release: ${{ steps.get_version.outputs.should_release }}
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      has_version: ${{ steps.version.outputs.has_version }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
 
-      - name: Get version
-        id: get_version
+      - name: Extract version
+        id: version
         shell: bash
         run: |
-          VERSION=""
-          SHOULD_RELEASE="false"
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION="${{ github.ref_name }}"
-            SHOULD_RELEASE="true"
-          elif [[ -n "${{ github.event.inputs.version }}" ]]; then
-            VERSION="${{ github.event.inputs.version }}"
-            SHOULD_RELEASE="true"
+          HAS_VERSION=false
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+            HAS_VERSION=true
           else
-            TAG=$(git tag --points-at HEAD --list 'v*' | head -1)
-            if [[ -n "$TAG" ]]; then
-              VERSION="$TAG"
-              SHOULD_RELEASE="true"
-            else
-              VERSION="dev-$(git rev-parse --short HEAD)"
-              SHOULD_RELEASE="false"
+            COMMIT_MSG="${{ github.event.head_commit.message }}"
+            TAG_NAME=$(echo "$COMMIT_MSG" | grep -oiE 'v[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 || true)
+            if [ -n "$TAG_NAME" ]; then
+              HAS_VERSION=true
             fi
           fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "should_release=$SHOULD_RELEASE" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION, Release: $SHOULD_RELEASE"
+          if [ "$HAS_VERSION" = true ]; then
+            VERSION="${TAG_NAME#v}"
+            echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "has_version=true" >> $GITHUB_OUTPUT
+            echo "Detected version: $TAG_NAME"
+          else
+            VERSION="dev-$(git rev-parse --short HEAD)"
+            echo "tag=" >> $GITHUB_OUTPUT
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "has_version=false" >> $GITHUB_OUTPUT
+            echo "No version detected, skip release. Build version: $VERSION"
+          fi
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1.13.0
@@ -62,7 +67,7 @@ jobs:
 
       - name: Rename with version
         shell: bash
-        run: mv check_env.exe check_env_${{ steps.get_version.outputs.version }}.exe
+        run: mv check_env.exe check_env_v${{ steps.version.outputs.version }}.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -74,9 +79,7 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-24.04
-    if: needs.build.outputs.should_release == 'true'
-    permissions:
-      contents: write
+    if: needs.build.outputs.has_version == 'true'
 
     steps:
       - name: Download artifact
@@ -88,8 +91,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ needs.build.outputs.version }}
+          tag_name: ${{ needs.build.outputs.tag }}
           files: ./release/check_env_*.exe
           generate_release_notes: true
           draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
