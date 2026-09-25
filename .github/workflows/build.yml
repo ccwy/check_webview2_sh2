@@ -10,15 +10,6 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    strategy:
-      matrix:
-        include:
-          - msystem: MINGW64
-            arch: x64
-            artifact: check_env_x64
-          - msystem: MINGW32
-            arch: x86
-            artifact: check_env_x86
 
     steps:
       - name: Checkout code
@@ -27,16 +18,16 @@ jobs:
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
-          msystem: ${{ matrix.msystem }}
+          msystem: MINGW64
           update: true
           install: >-
             mingw-w64-x86_64-gcc
-            mingw-w64-i686-gcc
 
       - name: Build with GCC (static linking)
         shell: msys2 {0}
         run: |
-          gcc check_env.c -o check_env.exe -Wall -O2 -static -ladvapi32 -lversion
+          windres resource.rc -o resource.o
+          gcc check_env.c resource.o -o check_env.exe -Wall -O2 -static -mwindows -ladvapi32 -lversion -lshell32 -lcomctl32
           echo "Build successful"
 
       - name: Verify exe
@@ -45,16 +36,11 @@ jobs:
           file check_env.exe
           objdump -p check_env.exe | grep "DLL Name" || true
 
-      - name: Rename exe
-        shell: pwsh
-        run: |
-          Rename-Item -Path check_env.exe -NewName check_env_${{ matrix.arch }}.exe
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: check_env_${{ matrix.arch }}.exe
+          name: check_env
+          path: check_env.exe
           retention-days: 90
 
   release:
@@ -65,16 +51,10 @@ jobs:
       contents: write
 
     steps:
-      - name: Download x64 artifact
+      - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: check_env_x64
-          path: ./release
-
-      - name: Download x86 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: check_env_x86
+          name: check_env
           path: ./release
 
       - name: List release files
@@ -83,7 +63,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ./release/*.exe
+          files: ./release/check_env.exe
           generate_release_notes: true
           draft: false
           prerelease: false
